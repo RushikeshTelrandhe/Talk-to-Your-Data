@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Talk to Your Data - AI SQL Generator</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+    <nav class="navbar">
+        <div class="nav-container">
+            <div class="nav-brand">
+                <i class="fas fa-database"></i>
+                <span>Talk to Your Data</span>
+            </div>
+            <div class="nav-user">
+                <span class="username">Welcome, {{ session.username }}</span>
+                <a href="{{ url_for('logout') }}" class="logout-btn">
+                    <i class="fas fa-sign-out-alt"></i>
+                    Logout
+                </a>
+            </div>
+        </div>
+    </nav>
+
+    <div class="main-container">
+        <div class="hero-section">
+            <h1>Ask your data anything</h1>
+            <p>Upload your own CSV or import a dataset, then ask questions in plain English</p>
+        </div>
+
+        <div class="datasource-card llm-card">
+            <div class="datasource-header">
+                <i class="fas fa-key"></i>
+                <span>AI model access</span>
+                <span id="llmBadge" class="active-badge">Local Ollama</span>
+            </div>
+            <div class="datasource-body">
+                <p class="hint llm-intro">
+                    The app uses the local Ollama model by default. To use a hosted model,
+                    ask the authorized user for an API key or token and paste it below.
+                    The key is kept only for your current login session and is never saved to disk.
+                </p>
+                <div class="datasource-form-row">
+                    <input type="password" id="llmKey" placeholder="API key / token" autocomplete="off">
+                    <input type="text" id="llmBaseUrl" placeholder="https://api.openai.com/v1" value="https://api.openai.com/v1">
+                    <input type="text" id="llmModel" placeholder="gpt-4o-mini" value="gpt-4o-mini">
+                </div>
+                <div class="datasource-form-row">
+                    <button id="saveLlmBtn" class="primary-small" type="button">
+                        <i class="fas fa-floppy-disk"></i> Save token
+                    </button>
+                    <button id="clearLlmBtn" class="ghost-btn llm-clear" type="button">
+                        <i class="fas fa-xmark"></i> Use local Ollama
+                    </button>
+                </div>
+                <div id="llmStatus" class="dataset-status" style="display: none;"></div>
+            </div>
+        </div>
+
+        <div class="datasource-card">
+            <div class="datasource-header">
+                <i class="fas fa-cloud-upload-alt"></i>
+                <span>Your data</span>
+                <span id="activeDatasetBadge" class="active-badge">Sample e-commerce data</span>
+                <button id="useSampleBtn" class="ghost-btn" type="button">
+                    <i class="fas fa-rotate-left"></i>
+                    Use sample data
+                </button>
+            </div>
+
+            <div class="datasource-body">
+                <div class="datasource-tabs">
+                    <button class="tab-btn active" data-tab="upload" type="button">
+                        <i class="fas fa-file-csv"></i> Upload CSV
+                    </button>
+                    <button class="tab-btn" data-tab="link" type="button">
+                        <i class="fas fa-link"></i> Import from link
+                    </button>
+                </div>
+
+                <div id="uploadPanel" class="tab-panel">
+                    <label id="dropzone" class="dropzone" for="csvFiles">
+                        <input type="file" id="csvFiles" accept=".csv,.tsv,text/csv" multiple hidden>
+                        <i class="fas fa-file-arrow-up"></i>
+                        <span>Click or drop CSV files here</span>
+                        <small>Select multiple files and each becomes a table</small>
+                    </label>
+                    <div id="fileList" class="file-list"></div>
+                    <div class="datasource-form-row">
+                        <input type="text" id="datasetName" placeholder="Dataset name (optional)" maxlength="120">
+                        <button id="uploadBtn" class="primary-small" type="button">
+                            <i class="fas fa-upload"></i> Upload &amp; analyze
+                        </button>
+                    </div>
+                </div>
+
+                <div id="linkPanel" class="tab-panel" style="display: none;">
+                    <div class="datasource-form-row">
+                        <input type="url" id="datasetUrl" placeholder="Google Drive / Sheets, Kaggle, or Hugging Face dataset link" maxlength="2000">
+                        <input type="text" id="linkName" placeholder="Dataset name (optional)" maxlength="120">
+                        <button id="importBtn" class="primary-small" type="button">
+                            <i class="fas fa-arrow-right-to-bracket"></i> Import &amp; analyze
+                        </button>
+                    </div>
+                    <p class="hint">
+                        Google Drive files and Sheets must be shared as "Anyone with the link".
+                        Kaggle needs <code>KAGGLE_USERNAME</code>/<code>KAGGLE_KEY</code>;
+                        private Hugging Face datasets need <code>HF_TOKEN</code>.
+                        Direct CSV links are supported too.
+                    </p>
+                </div>
+
+                <div id="datasetStatus" class="dataset-status" style="display: none;"></div>
+            </div>
+
+            <div id="datasetList" class="dataset-list"></div>
+        </div>
+
+        <div class="query-section">
+            <div class="query-card">
+                <div class="query-header">
+                    <i class="fas fa-comment-dots"></i>
+                    <span>Your Question</span>
+                    <span id="queryDatasetLabel" class="query-dataset-label">Sample e-commerce data</span>
+                </div>
+                <div class="query-input-group">
+                    <textarea id="userQuery" placeholder="e.g., Show me the top 10 customers by total orders..." rows="3"></textarea>
+                    <button id="askBtn" class="ask-btn">
+                        <i class="fas fa-paper-plane"></i>
+                        <span>Generate & Run</span>
+                    </button>
+                </div>
+                <div class="suggestions">
+                    <span class="suggestion-label">Try these:</span>
+                    <button class="suggestion-chip" data-query="Show me the order count by country">Order count by country</button>
+                    <button class="suggestion-chip" data-query="What are my top 10 most popular products">Top 10 products</button>
+                    <button class="suggestion-chip" data-query="List orders from countries that are in Asia">Orders from Asia</button>
+                </div>
+            </div>
+        </div>
+
+        <div id="resultsSection" class="results-section" style="display: none;">
+            <div class="sql-card">
+                <div class="sql-header">
+                    <i class="fas fa-code"></i>
+                    <span>Generated SQL</span>
+                    <button id="copySql" class="copy-btn" title="Copy SQL">
+                        <i class="fas fa-copy"></i>
+                    </button>
+                </div>
+                <pre><code id="sqlQuery"></code></pre>
+            </div>
+
+            <div class="table-card">
+                <div class="table-header">
+                    <i class="fas fa-table"></i>
+                    <span>Results</span>
+                    <span id="resultCount" class="result-count"></span>
+                </div>
+                <div class="table-wrapper">
+                    <table id="resultsTable">
+                        <thead></thead>
+                        <tbody></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <div id="loadingSection" class="loading-section" style="display: none;">
+            <div class="loading-spinner"></div>
+            <p id="loadingText">Generating SQL...</p>
+        </div>
+    </div>
+
+    <script src="{{ url_for('static', filename='js/app.js') }}"></script>
+</body>
+</html>

@@ -1,0 +1,176 @@
+# Talk to Your Data
+
+Ask questions about an e-commerce database in plain English. A local LLM (Nemotron via Ollama) turns your question into SQL, the app runs it against SQLite, and the results are shown as a table.
+
+## Features
+
+- Natural language to SQL using a local Ollama model (no cloud API key)
+- Optional hosted LLM: paste an API key/token supplied by the authorized user, kept only for the current login session
+- User signup/login with hashed passwords
+- Upload your own CSV files (one table per file) or import from Google Drive/Sheets, Kaggle, Hugging Face, or any direct CSV link
+- Each user gets isolated datasets; the LLM schema switches to the active dataset
+- Generated SQL is displayed and can be copied
+- Query results rendered in a readable table
+- Sample e-commerce data included (customers, products, orders)
+- One-click Windows launcher that checks and starts every dependency
+
+## Project structure
+
+```
+Talk to Your Data/
+|-- app/
+|   |-- app.py              Flask app, auth, dataset and query endpoints
+|   |-- dataset_tools.py    CSV parsing, type inference, remote dataset import
+|   |-- requirements.txt
+|   |-- static/             CSS and JavaScript
+|   `-- templates/          login, signup, and main pages
+|-- instance/               SQLite user database and uploaded dataset DBs
+|-- customers.csv           1,000 sample customers
+|-- products.csv            1,000 sample products
+|-- orders.csv              3,000 sample orders
+|-- ecommerce.db            SQLite database used for queries
+|-- load_data.py            Loads the CSV files into ecommerce.db
+|-- start.bat               One-click startup for Windows
+`-- 15_Talk_to_Your_Data...ipynb   Original notebook/experiment
+```
+
+## Prerequisites
+
+- Windows (for `start.bat`); the app itself is cross-platform
+- Python 3.10 or newer
+- [Ollama](https://ollama.com) installed and the model available:
+
+```powershell
+ollama pull nemotron-3.5-bolt:e4b
+```
+
+## Quick start
+
+Double-click `start.bat`.
+
+It will:
+
+1. Create `venv/` if it does not exist
+2. Install the Python packages
+3. Start Ollama if it is not already running
+4. Verify the model is present (and pull it if missing)
+5. Load the CSV data into `ecommerce.db` if the tables are empty
+6. Start the app and open http://localhost:5000
+
+Then create an account on the signup page. You can ask questions about the sample data right away, or upload your own data.
+
+### Using your own data
+
+After logging in, choose one of these in the **Your data** card:
+
+1. **Upload CSV**: select one or more `.csv`/`.tsv` files. Each file becomes a table, column types are inferred automatically, and the data is stored in a private SQLite database under `instance/datasets/<user_id>/`.
+2. **Import from link**: paste a supported URL and the app downloads and analyzes it:
+   - Google Drive files or Google Sheets - share as "Anyone with the link"
+   - Kaggle datasets - set `KAGGLE_USERNAME` and `KAGGLE_KEY` (or use `~/.kaggle/kaggle.json`)
+   - Hugging Face datasets - public datasets work out of the box; set `HF_TOKEN` for private ones
+   - Any direct `.csv` URL (or a `.zip` containing CSV files)
+
+Use **Preview** to see sample rows, **Use** to make a dataset active, and **Use sample data** to switch back to the bundled e-commerce database. All questions then run against the active dataset.
+
+### Using a hosted model
+
+The app uses local Ollama by default. To use a hosted OpenAI-compatible model instead, ask the authorized user for an API key or token, then enter it in the **AI model access** card along with the base URL (for example `https://api.openai.com/v1`) and model name. The token is kept only for the current login session, is never written to disk, and is cleared on logout. Select **Use local Ollama** to switch back.
+
+Example questions:
+
+- "How many customers are there?"
+- "Show me the order count by country"
+- "What are my top 10 most popular products"
+
+To use a different model, pass it as an argument:
+
+```bat
+start.bat llama3.2
+```
+
+## Manual setup
+
+```powershell
+python -m venv venv
+.\venv\Scripts\Activate.ps1
+pip install -r app\requirements.txt
+ollama serve
+python load_data.py
+python app\app.py
+```
+
+Open http://localhost:5000.
+
+## Configuration
+
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `OLLAMA_MODEL` | `nemotron-3.5-bolt:e4b` | Model used for SQL generation |
+| `FLASK_DEBUG` | `0` | Set to `1` to enable the Flask debugger |
+| `KAGGLE_USERNAME` | - | Kaggle username for dataset downloads |
+| `KAGGLE_KEY` | - | Kaggle API key for dataset downloads |
+| `HF_TOKEN` | - | Hugging Face token for private datasets |
+
+The Ollama endpoint is `http://127.0.0.1:11434`, and the app listens on port `5000`.
+
+## API
+
+All endpoints below require a logged-in session.
+
+| Method | Endpoint | Purpose |
+| --- | --- | --- |
+| `GET` | `/api/datasets` | List your datasets and the active one |
+| `POST` | `/api/datasets/upload` | Upload CSV files (`multipart/form-data`, field `files`) |
+| `POST` | `/api/datasets/import` | Import from a link: `{ "url": "...", "name": "..." }` |
+| `GET` | `/api/datasets/<id>/overview` | Tables, columns, and sample rows |
+| `POST` | `/api/datasets/<id>/activate` | Switch the active dataset |
+| `POST` | `/api/datasets/default` | Switch back to the sample data |
+| `DELETE` | `/api/datasets/<id>` | Delete a dataset and its data |
+| `POST` | `/api/query` | Ask a question about the active dataset |
+
+### Query
+
+`POST /api/query`
+
+```json
+{ "query": "How many customers are there?" }
+```
+
+Response:
+
+```json
+{
+  "sql": "SELECT COUNT(customer_id) FROM customers",
+  "columns": ["COUNT(customer_id)"],
+  "results": [{ "COUNT(customer_id)": 1000 }]
+}
+```
+
+## Database schema
+
+These are the tables in the bundled sample database (`ecommerce.db`):
+
+- `customers` - customer_id, name, email, phone, address, city, country, postal_code, loyalty_points
+- `products` - product_id, name, description, price, discount, category, brand, stock, rating, seller, shipping, etc.
+- `orders` - order_id, customer_id, product_id, quantity, unit_price, total_price, order_date, shipping_address, payment_method, status
+
+Uploaded datasets get their own schema, which is read directly from the uploaded CSV headers.
+
+## Troubleshooting
+
+- **"Ollama is not running"**: start Ollama, or install it and run `start.bat` again.
+- **Model not found**: run `ollama pull nemotron-3.5-bolt:e4b`, or `start.bat <model-name>`.
+- **Port 5000 already in use**: another instance is running; `start.bat` opens the existing app instead.
+- **Empty results**: delete `ecommerce.db` and run `python load_data.py`, or let `start.bat` reload it.
+- **Package errors on Python 3.13**: use the versions in `app/requirements.txt` (Flask 3.x / SQLAlchemy 2.0.36+).
+- **Google Drive import says "returned a web page"**: share the file as "Anyone with the link", or upload the CSV directly.
+- **Kaggle import asks for credentials**: set `KAGGLE_USERNAME` and `KAGGLE_KEY`, or download the CSV from Kaggle and upload it.
+- **Hugging Face import fails**: confirm the dataset has a viewer/splits, and set `HF_TOKEN` if it is private.
+- **Uploaded analysis is slow**: remote imports are capped at 5,000 rows, CSV uploads at 200,000 rows, and query results at 5,000 rows.
+
+## Notes
+
+- The first query after startup is slower because Ollama has to load the model (about 8 GB).
+- `instance/users.db` stores accounts and dataset metadata; uploaded data lives in `instance/datasets/`.
+- Generated SQL is restricted to a single read-only `SELECT`/`WITH` statement.
+- This uses Flask's development server. For real deployment, run it behind a production WSGI server and set a strong `SECRET_KEY`.
